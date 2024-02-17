@@ -109,6 +109,7 @@ if (namespace != namespaces['szamlak']):
 
 for invoice in root.findall('szamlak:szamla', namespaces):
     warnings: List[str] = []
+    errors: List[str] = []
     invoice_id_elem = invoice.find('szamlak:fejlec/szamlak:szlasorszam', namespaces)
     invoice_id = invoice_id_elem.text if invoice_id_elem is not None else None
     summary = invoice.find('szamlak:osszesites', namespaces)
@@ -194,18 +195,32 @@ for invoice in root.findall('szamlak:szamla', namespaces):
 
     # Check if tax_parts and final_sum match
     tax_parts_after_tax_sum = sum(map(lambda x: x[2], tax_part_values))
+    tax_parts_before_tax_sum = sum(map(lambda x: x[0], tax_part_values))
+    tax_parts_tax_sum = sum(map(lambda x: x[1], tax_part_values))
+
+    if (tax_parts_before_tax_sum != before_tax):
+        message = f'Az áfakulcsok nettó összege nem egyezik a végösszeggel: {tax_parts_before_tax_sum} != {before_tax}'
+        errors.append(message)
+
+    if (tax_parts_tax_sum != tax):
+        message = f'Az áfakulcsok áfa összege nem egyezik a végösszeggel: {tax_parts_tax_sum} != {tax}'
+        errors.append(message)
+
     if (tax_parts_after_tax_sum != after_tax):
-        message = f'Az áfakulcsok összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
-        exit(1)
-    
+        message = f'Az áfakulcsok bruttó összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
+        errors.append(message)
 
-    if (len(warnings) > 0):
-        print(f'\nA számla kerekítés közbeni hibák: {invoice_id}')
-        for error in warnings:
+    if (len(errors) > 0):
+        print(f'\nSzámla hibák: {invoice_id}!')
+        for error in errors:
             print(error)
+        print("Ennek a hibának még nem készült el a kezelése. Kérem ellenőrizze a számlát manuálisan!")
+        exit(1)
 
-
-
+    elif (len(warnings) > 0):
+        print(f'\nSzámla problémák: {invoice_id}')
+        for warning in warnings:
+            print(warning)
 
 
 # Output
