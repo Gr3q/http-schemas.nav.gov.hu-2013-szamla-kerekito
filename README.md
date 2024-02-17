@@ -20,7 +20,9 @@ Futtasd igy a terminálból:
 python rounder.py {{fajl}}
 ```
 
-ahol a fájl amin futtatni akarod.
+ahol a "fájl" amin futtatni akarod.
+
+__Ha a `rounder.py` fájlt a például a Letöltések mappába mentedded le akkor meg kell adni a fájl helyét így `python C:\Users\[User Name]\Downloads\rounder.py {{fajl}}` vagy `python $HOME\Downloads\rounder.py {{fajl}}`!__
 
 _Tipp: Windowsban ha beírod a Windows Explorer fájl sávjaba hogy "cmd" es lenyomod az Entert akkor felhozza a terminált abban a mappában ami meg volt nyitva._
 
