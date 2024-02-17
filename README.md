@@ -7,14 +7,14 @@ Ha a nettó+áfa nem egyenlő a bruttóval bármelyik rovatban akkor javítja a 
 
 __Javítás ahhoz amikor a részösszegek összege nem egyezik a végösszeggel nincs megírva, ilyenkor a program kilép és nem menti a javított fájlt!__
 
-## Kovetelmenyek
+## Követelmények
 
 * Legyen feltelepítve [Python](https://www.python.org/downloads/) 3.8+
 * Legyen lementve [rounder.py](https://github.com/Gr3q/http-schemas.nav.gov.hu-2013-szamla-kerekito/raw/main/rounder.py) (jobb klikk+mentés másként)
 
 ## Használat
 
-Futtasd igy a terminalbol:
+Futtasd igy a terminálból:
 
 ```bash
 python rounder.py {{fajl}}
