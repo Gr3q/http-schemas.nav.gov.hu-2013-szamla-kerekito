@@ -5,6 +5,18 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from typing import Literal, Dict, Tuple, List
 
+class BColors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
 allowed_tags_to_edit = [
     "nettoar",
     "adoertek",
@@ -18,7 +30,7 @@ argparser = argparse.ArgumentParser(description='Kerekít minden számot (brutt�
                                     A kerekítés szabványos módon megy végbe "*,50" alatt lefelé, "*,50" és afelett felfelé kerekítve.')
 argparser.add_argument('input', type=Path, help='Az input xml fájl')
 argparser.add_argument('--out_folder', type=Path, help='Az output xml mappa. Alapértermezett érték az input fájl mappája.', default=None)
-argparser.add_argument('--force', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Akkor is megpróbál kerekíteni ah ay inut fájl nem felel meg a várt formátumnak. Alapértelmezett érték: False.')
+argparser.add_argument('--force', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Akkor is megpróbál kerekíteni ah ay inut fájl nem felel meg a várt formátumnak vagy hibás. Alapértelmezett érték: False.')
 argparser.add_argument('--overwrite', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Felülírja az output fájlt, ha már létezik. Alapértelmezett érték: False.',)
 argparser.add_argument('--correct', type=str, choices=["netto", "afa"], default="netto", help='Kijavítja a az egyik részösszeget, ha nem egyezik a bruttó összegével. Alapértelmezett érték: netto.',)
 args = argparser.parse_args()
@@ -42,9 +54,6 @@ if not out_folder.exists():
     out_folder.mkdir(parents=True)
 
 out_path = out_folder.joinpath(f"{input.stem}-kerekitett{input.suffix}")
-if (out_path.exists() and not overwrite):
-    print(f'A megadott output fájl már létezik: {out_path}')
-    exit(1)
 
 # XML validation
 def get_xml_tree(input: Path) -> ET.ElementTree | None:
@@ -107,6 +116,7 @@ if (namespace != namespaces['szamlak']):
     namespaces['szamlak'] = namespace
     print('Az input fájl nem felel meg a várt formátumnak, de a --force kapcsolóval megpróbálom kerekíteni.')
 
+hadErrors = False
 for invoice in root.findall('szamlak:szamla', namespaces):
     warnings: List[str] = []
     errors: List[str] = []
@@ -171,57 +181,65 @@ for invoice in root.findall('szamlak:szamla', namespaces):
     # Final sum validation
     final_sum = summary.find('szamlak:vegosszeg', namespaces)
     if (final_sum is None):
-        print(f'A számla nem tartalmaz végösszeget: {invoice_id}')
-        exit(1)
+        errors.append(f'A számla nem tartalmaz végösszeget')
+    else:
+        before_tax, tax, after_tax = get_summary_part_values(final_sum, "final_sum")
+        if (before_tax is None or tax is None or after_tax is None):
+            errors.append(f'A számla nem tartalmaz nettó, áfa és bruttó végösszeget')
+        else:
+            if (before_tax + tax != after_tax):
+                message = f'Végösszeg nem egyezik {after_tax} != {tax} + {before_tax}'
+                if (correct == "netto"):
+                    message += f', kijavítom a nettó összeget: {before_tax} -> {after_tax - tax}'
+                    before_tax = after_tax - tax
+                    set_summary_part_value(final_sum, "final_sum", "before_tax", value=after_tax - tax)
 
-    before_tax, tax, after_tax = get_summary_part_values(final_sum, "final_sum")
-    if (before_tax is None or tax is None or after_tax is None):
-        print(f'A számla nem tartalmaz nettó, áfa és bruttó végösszeget: {invoice_id}')
-        exit(1)
+                elif (correct == "afa"):
+                    message += f', kijavítom az áfa összeget: {tax} -> {after_tax - before_tax}'
+                    tax = after_tax - before_tax
+                    set_summary_part_value(final_sum, "final_sum", "tax", after_tax - before_tax)
 
-    if (before_tax + tax != after_tax):
-        message = f'Végösszeg nem egyezik {after_tax} != {tax} + {before_tax}'
-        if (correct == "netto"):
-            message += f', kijavítom a nettó összeget: {before_tax} -> {after_tax - tax}'
-            before_tax = after_tax - tax
-            set_summary_part_value(final_sum, "final_sum", "before_tax", value=after_tax - tax)
+                warnings.append(message)
 
-        elif (correct == "afa"):
-            message += f', kijavítom az áfa összeget: {tax} -> {after_tax - before_tax}'
-            tax = after_tax - before_tax
-            set_summary_part_value(final_sum, "final_sum", "tax", after_tax - before_tax)
+            # Check if tax_parts and final_sum match
+            tax_parts_after_tax_sum = sum(map(lambda x: x[2], tax_part_values))
+            tax_parts_before_tax_sum = sum(map(lambda x: x[0], tax_part_values))
+            tax_parts_tax_sum = sum(map(lambda x: x[1], tax_part_values))
 
-        warnings.append(message)
+            if (tax_parts_before_tax_sum != before_tax):
+                message = f'Az áfakulcsok nettó összege nem egyezik a végösszeggel: {tax_parts_before_tax_sum} != {before_tax}'
+                errors.append(message)
 
-    # Check if tax_parts and final_sum match
-    tax_parts_after_tax_sum = sum(map(lambda x: x[2], tax_part_values))
-    tax_parts_before_tax_sum = sum(map(lambda x: x[0], tax_part_values))
-    tax_parts_tax_sum = sum(map(lambda x: x[1], tax_part_values))
+            if (tax_parts_tax_sum != tax):
+                message = f'Az áfakulcsok áfa összege nem egyezik a végösszeggel: {tax_parts_tax_sum} != {tax}'
+                errors.append(message)
 
-    if (tax_parts_before_tax_sum != before_tax):
-        message = f'Az áfakulcsok nettó összege nem egyezik a végösszeggel: {tax_parts_before_tax_sum} != {before_tax}'
-        errors.append(message)
+            if (tax_parts_after_tax_sum != after_tax):
+                message = f'Az áfakulcsok bruttó összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
+                errors.append(message)
 
-    if (tax_parts_tax_sum != tax):
-        message = f'Az áfakulcsok áfa összege nem egyezik a végösszeggel: {tax_parts_tax_sum} != {tax}'
-        errors.append(message)
-
-    if (tax_parts_after_tax_sum != after_tax):
-        message = f'Az áfakulcsok bruttó összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
-        errors.append(message)
-
-    if (len(errors) > 0):
-        print(f'\nSzámla hibák: {invoice_id}!')
-        for error in errors:
-            print(error)
-        print("Ennek a hibának még nem készült el a kezelése. Kérem ellenőrizze a számlát manuálisan!")
-        exit(1)
-
-    elif (len(warnings) > 0):
+    if (len(errors) > 0 or len(warnings) > 0):
         print(f'\nSzámla problémák: {invoice_id}')
-        for warning in warnings:
-            print(warning)
 
+        if (len(errors) > 0):
+            hadErrors = True
+            for error in errors:
+                print(f"{BColors.FAIL}{error}{BColors.ENDC}")
+
+        elif (len(warnings) > 0):
+            for warning in warnings:
+                print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
+
+if (not hadErrors):
+    print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
+else:
+    print(f'{BColors.FAIL}Hibák a számlákban.{BColors.ENDC}')
+    if not force:
+        exit(1)
+
+if (out_path.exists() and not overwrite):
+    print(f'A megadott output fájl már létezik: {out_path}')
+    exit(1)
 
 # Output
 tree.write(out_path, encoding='utf-8', xml_declaration=True, default_namespace=namespaces['szamlak'])
