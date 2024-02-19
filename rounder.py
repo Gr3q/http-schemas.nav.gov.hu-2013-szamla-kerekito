@@ -124,6 +124,8 @@ for invoice in root.findall('szamlak:szamla', namespaces):
     paid_type_element = invoice.find('szamlak:nem_kotelezo/szamlak:fiz_mod', namespaces)
     paid_type = paid_type_element.text if paid_type_element is not None else None
     invoice_id = invoice_id_elem.text if invoice_id_elem is not None else None
+
+    # EDIT
     summary = invoice.find('szamlak:osszesites', namespaces)
     if summary is None:
         warnings.append(f'A számla nem tartalmaz összesítést')
@@ -148,8 +150,8 @@ for invoice in root.findall('szamlak:szamla', namespaces):
 
             summary_item.text = '{0:.2f}'.format(round(value))
 
+    # VALIDATION
     try:
-        # Parts validation
         tax_parts = summary.findall('szamlak:afarovat', namespaces)
         if (tax_parts is None):
             errors.append(f'A számla nem tartalmaz áfakulcsokat')
@@ -236,6 +238,7 @@ for invoice in root.findall('szamlak:szamla', namespaces):
                 for warning in warnings:
                     print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
 
+# Summary
 if (not hadErrors):
     print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
 else:
@@ -243,10 +246,10 @@ else:
     if not force:
         exit(1)
 
+# Output
 if (out_path.exists() and not overwrite):
     print(f'A megadott output fájl már létezik: {out_path}')
     exit(1)
 
-# Output
 tree.write(out_path, encoding='utf-8', xml_declaration=True, default_namespace=namespaces['szamlak'])
 print(f'{BColors.OKGREEN}Az output fájl elkészült: {out_path}{BColors.ENDC}')
