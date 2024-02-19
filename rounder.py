@@ -249,3 +249,4 @@ if (out_path.exists() and not overwrite):
 
 # Output
 tree.write(out_path, encoding='utf-8', xml_declaration=True, default_namespace=namespaces['szamlak'])
+print(f'{BColors.OKGREEN}Az output fájl elkészült: {out_path}{BColors.ENDC}')
