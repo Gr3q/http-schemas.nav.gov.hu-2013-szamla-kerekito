@@ -145,90 +145,93 @@ for invoice in root.findall('szamlak:szamla', namespaces):
 
             summary_item.text = '{0:.2f}'.format(round(value))
 
-    # Parts validation
-    tax_parts = summary.findall('szamlak:afarovat', namespaces)
-    if (tax_parts is None):
-        print(f'A számla nem tartalmaz áfakulcsokat: {invoice_id}')
-        exit(1)
+    try:
+        # Parts validation
+        tax_parts = summary.findall('szamlak:afarovat', namespaces)
+        if (tax_parts is None):
+            errors.append(f'A számla nem tartalmaz áfakulcsokat')
+            continue
 
-    tax_part_values: List[Tuple[float, float, float]] = []
-    for [index, tax_part] in enumerate(tax_parts):
-        before_tax, tax, after_tax = get_summary_part_values(tax_part, "sum_part")
-        if (before_tax is None or tax is None or after_tax is None):
-            print(f'A számla nem tartalmaz nettó, áfa és bruttó összeget az áfakulcsoknál: {invoice_id}')
-            exit(1)
+        tax_part_values: List[Tuple[float, float, float]] = []
+        for [index, tax_part] in enumerate(tax_parts):
+            before_tax, tax, after_tax = get_summary_part_values(tax_part, "sum_part")
+            if (before_tax is None or tax is None or after_tax is None):
+                errors.append(f'A számla nem tartalmaz nettó, áfa és bruttó összeget az áfakulcsoknál')
+                continue
 
-        if (before_tax + tax != after_tax):
-            message = f'Áfakulcs#{index + 1} nem egyezik {after_tax} != {tax} + {before_tax}'
-
-            if (correct == "netto"):
-                message += f', kijavítom a nettó összeget: {before_tax} -> {after_tax - tax}'
-                before_tax = after_tax - tax
-                set_summary_part_value(tax_part, "sum_part", "before_tax", value=after_tax - tax)
-
-            elif (correct == "afa"):
-                message += f', kijavítom az áfa összeget: {tax} -> {after_tax - before_tax}'
-                tax = after_tax - before_tax
-                set_summary_part_value(tax_part, "sum_part", "tax", after_tax - before_tax)
-
-            # If tax_parts has only 1 element, we will have a warning anyway with the final_sum because they are the same.
-            # So we don't need to add the same warning twice. 
-            if (len(tax_parts) > 1):
-                warnings.append(message)
-
-        tax_part_values.append((before_tax, tax, after_tax))
-
-    # Final sum validation
-    final_sum = summary.find('szamlak:vegosszeg', namespaces)
-    if (final_sum is None):
-        errors.append(f'A számla nem tartalmaz végösszeget')
-    else:
-        before_tax, tax, after_tax = get_summary_part_values(final_sum, "final_sum")
-        if (before_tax is None or tax is None or after_tax is None):
-            errors.append(f'A számla nem tartalmaz nettó, áfa és bruttó végösszeget')
-        else:
             if (before_tax + tax != after_tax):
-                message = f'Végösszeg nem egyezik {after_tax} != {tax} + {before_tax}'
+                message = f'Áfakulcs#{index + 1} nem egyezik {after_tax} != {tax} + {before_tax}'
+
                 if (correct == "netto"):
                     message += f', kijavítom a nettó összeget: {before_tax} -> {after_tax - tax}'
                     before_tax = after_tax - tax
-                    set_summary_part_value(final_sum, "final_sum", "before_tax", value=after_tax - tax)
+                    set_summary_part_value(tax_part, "sum_part", "before_tax", value=after_tax - tax)
 
                 elif (correct == "afa"):
                     message += f', kijavítom az áfa összeget: {tax} -> {after_tax - before_tax}'
                     tax = after_tax - before_tax
-                    set_summary_part_value(final_sum, "final_sum", "tax", after_tax - before_tax)
+                    set_summary_part_value(tax_part, "sum_part", "tax", after_tax - before_tax)
 
-                warnings.append(message)
+                # If tax_parts has only 1 element, we will have a warning anyway with the final_sum because they are the same.
+                # So we don't need to add the same warning twice. 
+                if (len(tax_parts) > 1):
+                    warnings.append(message)
 
-            # Check if tax_parts and final_sum match
-            tax_parts_after_tax_sum = sum(map(lambda x: x[2], tax_part_values))
-            tax_parts_before_tax_sum = sum(map(lambda x: x[0], tax_part_values))
-            tax_parts_tax_sum = sum(map(lambda x: x[1], tax_part_values))
+            tax_part_values.append((before_tax, tax, after_tax))
 
-            if (tax_parts_before_tax_sum != before_tax):
-                message = f'Az áfakulcsok nettó összege nem egyezik a végösszeggel: {tax_parts_before_tax_sum} != {before_tax}'
-                errors.append(message)
+        # Final sum validation
+        final_sum = summary.find('szamlak:vegosszeg', namespaces)
+        if (final_sum is None):
+            errors.append(f'A számla nem tartalmaz végösszeget')
+            continue
 
-            if (tax_parts_tax_sum != tax):
-                message = f'Az áfakulcsok áfa összege nem egyezik a végösszeggel: {tax_parts_tax_sum} != {tax}'
-                errors.append(message)
+        before_tax, tax, after_tax = get_summary_part_values(final_sum, "final_sum")
+        if (before_tax is None or tax is None or after_tax is None):
+            errors.append(f'A számla nem tartalmaz nettó, áfa és bruttó végösszeget')
+            continue
 
-            if (tax_parts_after_tax_sum != after_tax):
-                message = f'Az áfakulcsok bruttó összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
-                errors.append(message)
+        if (before_tax + tax != after_tax):
+            message = f'Végösszeg nem egyezik {after_tax} != {tax} + {before_tax}'
+            if (correct == "netto"):
+                message += f', kijavítom a nettó összeget: {before_tax} -> {after_tax - tax}'
+                before_tax = after_tax - tax
+                set_summary_part_value(final_sum, "final_sum", "before_tax", value=after_tax - tax)
 
-    if (len(errors) > 0 or len(warnings) > 0):
-        print(f'\nSzámla problémák: {invoice_id}')
+            elif (correct == "afa"):
+                message += f', kijavítom az áfa összeget: {tax} -> {after_tax - before_tax}'
+                tax = after_tax - before_tax
+                set_summary_part_value(final_sum, "final_sum", "tax", after_tax - before_tax)
 
-        if (len(errors) > 0):
-            hadErrors = True
-            for error in errors:
-                print(f"{BColors.FAIL}{error}{BColors.ENDC}")
+            warnings.append(message)
 
-        elif (len(warnings) > 0):
-            for warning in warnings:
-                print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
+        # Check if tax_parts and final_sum match
+        tax_parts_after_tax_sum = sum(map(lambda x: x[2], tax_part_values))
+        tax_parts_before_tax_sum = sum(map(lambda x: x[0], tax_part_values))
+        tax_parts_tax_sum = sum(map(lambda x: x[1], tax_part_values))
+
+        if (tax_parts_before_tax_sum != before_tax):
+            message = f'Az áfakulcsok nettó összege nem egyezik a végösszeggel: {tax_parts_before_tax_sum} != {before_tax}'
+            errors.append(message)
+
+        if (tax_parts_tax_sum != tax):
+            message = f'Az áfakulcsok áfa összege nem egyezik a végösszeggel: {tax_parts_tax_sum} != {tax}'
+            errors.append(message)
+
+        if (tax_parts_after_tax_sum != after_tax):
+            message = f'Az áfakulcsok bruttó összege nem egyezik a végösszeggel: {tax_parts_after_tax_sum} != {after_tax}'
+            errors.append(message)
+    finally:
+        if (len(errors) > 0 or len(warnings) > 0):
+            print(f'\nSzámla problémák: {invoice_id}')
+
+            if (len(errors) > 0):
+                hadErrors = True
+                for error in errors:
+                    print(f"{BColors.FAIL}{error}{BColors.ENDC}")
+
+            elif (len(warnings) > 0):
+                for warning in warnings:
+                    print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
 
 if (not hadErrors):
     print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
