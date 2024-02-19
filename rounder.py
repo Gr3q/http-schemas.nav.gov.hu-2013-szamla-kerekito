@@ -121,9 +121,12 @@ for invoice in root.findall('szamlak:szamla', namespaces):
     warnings: List[str] = []
     errors: List[str] = []
     invoice_id_elem = invoice.find('szamlak:fejlec/szamlak:szlasorszam', namespaces)
+    paid_type_element = invoice.find('szamlak:nem_kotelezo/szamlak:fiz_mod', namespaces)
+    paid_type = paid_type_element.text if paid_type_element is not None else None
     invoice_id = invoice_id_elem.text if invoice_id_elem is not None else None
     summary = invoice.find('szamlak:osszesites', namespaces)
     if summary is None:
+        warnings.append(f'A számla nem tartalmaz összesítést')
         continue
 
     for summary_part in summary:
@@ -222,7 +225,7 @@ for invoice in root.findall('szamlak:szamla', namespaces):
             errors.append(message)
     finally:
         if (len(errors) > 0 or len(warnings) > 0):
-            print(f'\nSzámla problémák: {invoice_id}')
+            print(f'\nSzámla problémák: {invoice_id} - {paid_type}')
 
             if (len(errors) > 0):
                 hadErrors = True
