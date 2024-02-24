@@ -32,6 +32,8 @@ argparser.add_argument('input', type=Path, help='Az input xml fájl')
 argparser.add_argument('--out_folder', type=Path, help='Az output xml mappa. Alapértermezett érték az input fájl mappája.', default=None)
 argparser.add_argument('--force', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Akkor is megpróbál kerekíteni ah ay inut fájl nem felel meg a várt formátumnak vagy hibás. Alapértelmezett érték: False.')
 argparser.add_argument('--overwrite', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Felülírja az output fájlt, ha már létezik. Alapértelmezett érték: False.',)
+argparser.add_argument('--validate', type=bool, action=argparse.BooleanOptionalAction, default=True, help='Nem ellenőrzi a számlák összegeit, csak kerekít. Alapértelmezett érték: True.',)
+argparser.add_argument('--round', type=bool, action=argparse.BooleanOptionalAction, default=True, help='Nem kerekít végösszeget, csak ellenpőriz. Alapértelmezett érték: True.',)
 argparser.add_argument('--correct', type=str, choices=["netto", "afa"], default="netto", help='Kijavítja a az egyik részösszeget, ha nem egyezik a bruttó összegével. Alapértelmezett érték: netto.',)
 args = argparser.parse_args()
 
@@ -40,6 +42,14 @@ out_folder: Path | None = args.out_folder
 overwrite: bool = args.overwrite
 force: bool = args.force
 correct: Literal["netto", "afa"]= args.correct
+validate: bool = args.validate
+do_round: bool = args.round
+
+if (not do_round and not validate):
+    print(f'Nem lehet kikapcsolni a kerekítést és az ellenőrzést egyszerre.')
+    exit(1)
+
+
 
 # Input file validation
 if (not input.exists()):
@@ -124,37 +134,40 @@ for invoice in root.findall('szamlak:szamla', namespaces):
     paid_type_element = invoice.find('szamlak:nem_kotelezo/szamlak:fiz_mod', namespaces)
     paid_type = paid_type_element.text if paid_type_element is not None else None
     invoice_id = invoice_id_elem.text if invoice_id_elem is not None else None
-
-    # EDIT
     summary = invoice.find('szamlak:osszesites', namespaces)
     if summary is None:
-        warnings.append(f'A számla nem tartalmaz összesítést')
+        errors.append(f'A számla nem tartalmaz összesítést')
         continue
 
-    for summary_part in summary:
-        final_sum = summary_part.tag.endswith('vegosszeg')
-        for summary_item in summary_part:
-            if summary_item.tag.split('}')[1] not in allowed_tags_to_edit:
-                continue
+    if (do_round):
+        # EDIT
+        for summary_part in summary:
+            final_sum = summary_part.tag.endswith('vegosszeg')
+            for summary_item in summary_part:
+                if summary_item.tag.split('}')[1] not in allowed_tags_to_edit:
+                    continue
 
-            if summary_item.text is None:
-                continue
+                if summary_item.text is None:
+                    continue
 
-            try:
-                value = float(summary_item.text)
-            except ValueError:
-                print(f'A(z) {summary_item.tag} értéke nem szám: {summary_item.text}')
-                if invoice_id is not None:
-                    print(f'A számlaszám: {invoice_id}')
-                exit(1)
+                try:
+                    value = float(summary_item.text)
+                except ValueError:
+                    print(f'A(z) {summary_item.tag} értéke nem szám: {summary_item.text}')
+                    if invoice_id is not None:
+                        print(f'A számlaszám: {invoice_id}')
+                    exit(1)
 
-            summary_item.text = '{0:.2f}'.format(round(value))
+                summary_item.text = '{0:.2f}'.format(round(value))
 
     # VALIDATION
+    if not validate:
+        continue
+
     try:
         tax_parts = summary.findall('szamlak:afarovat', namespaces)
-        if (tax_parts is None):
-            errors.append(f'A számla nem tartalmaz áfakulcsokat')
+        if (tax_parts is None or len(tax_parts) == 0):
+            errors.append(f'A számla nem tartalmaz áfakulcsokat.')
             continue
 
         tax_part_values: List[Tuple[float, float, float]] = []
@@ -162,6 +175,10 @@ for invoice in root.findall('szamlak:szamla', namespaces):
             before_tax, tax, after_tax = get_summary_part_values(tax_part, "sum_part")
             if (before_tax is None or tax is None or after_tax is None):
                 errors.append(f'A számla nem tartalmaz nettó, áfa és bruttó összeget az áfakulcsoknál')
+                continue
+
+            if (before_tax == 0 and tax == 0 and after_tax == 0):
+                warnings.append(f'A számla egyik áfakulcsának értékei nem lehetnek 0')
                 continue
 
             if (before_tax + tax != after_tax):
@@ -238,13 +255,16 @@ for invoice in root.findall('szamlak:szamla', namespaces):
                 for warning in warnings:
                     print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
 
+if validate:
 # Summary
-if (not hadErrors):
-    print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
-else:
-    print(f'{BColors.FAIL}Hibák a számlákban.{BColors.ENDC}')
-    if not force:
-        exit(1)
+    if (not hadErrors):
+        print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
+    else:
+        print(f'{BColors.FAIL}Hibák a számlákban.{BColors.ENDC}')
+
+# No need to try write out
+if not do_round:
+    exit(0)
 
 # Output
 if (out_path.exists() and not overwrite):
