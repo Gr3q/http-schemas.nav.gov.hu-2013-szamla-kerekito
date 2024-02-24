@@ -34,6 +34,7 @@ argparser.add_argument('--force', type=bool, action=argparse.BooleanOptionalActi
 argparser.add_argument('--overwrite', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Felülírja az output fájlt, ha már létezik. Alapértelmezett érték: False.',)
 argparser.add_argument('--validate', type=bool, action=argparse.BooleanOptionalAction, default=True, help='Nem ellenőrzi a számlák összegeit, csak kerekít. Alapértelmezett érték: True.',)
 argparser.add_argument('--round', type=bool, action=argparse.BooleanOptionalAction, default=True, help='Nem kerekít végösszeget, csak ellenpőriz. Alapértelmezett érték: True.',)
+argparser.add_argument('--color', type=bool, action=argparse.BooleanOptionalAction, default=False, help='Színes kiírás. Alapértelmezett érték: False.',)
 argparser.add_argument('--correct', type=str, choices=["netto", "afa"], default="netto", help='Kijavítja a az egyik részösszeget, ha nem egyezik a bruttó összegével. Alapértelmezett érték: netto.',)
 args = argparser.parse_args()
 
@@ -44,6 +45,7 @@ force: bool = args.force
 correct: Literal["netto", "afa"]= args.correct
 validate: bool = args.validate
 do_round: bool = args.round
+color: bool = args.color
 
 if (not do_round and not validate):
     print(f'Nem lehet kikapcsolni a kerekítést és az ellenőrzést egyszerre.')
@@ -250,18 +252,18 @@ for invoice in root.findall('szamlak:szamla', namespaces):
             if (len(errors) > 0):
                 hadErrors = True
                 for error in errors:
-                    print(f"{BColors.FAIL}{error}{BColors.ENDC}")
+                    print(f"{BColors.FAIL}{error}{BColors.ENDC}") if color else print(error)
 
             elif (len(warnings) > 0):
                 for warning in warnings:
-                    print(f"{BColors.WARNING}{warning}{BColors.ENDC}")
+                    print(f"{BColors.WARNING}{warning}{BColors.ENDC}") if color else print(warning)
 
 if validate:
-# Summary
+    # Summary
     if (not hadErrors):
-        print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}')
+        print(f'{BColors.OKGREEN}Nincs hiba a számlákban.{BColors.ENDC}') if color else print('Nincs hiba a számlákban.')
     else:
-        print(f'{BColors.FAIL}Hibák a számlákban.{BColors.ENDC}')
+        print(f'{BColors.FAIL}Hibák a számlákban.{BColors.ENDC}') if color else print('Hibák a számlákban.')
 
 # No need to try write out
 if not do_round:
@@ -273,4 +275,7 @@ if (out_path.exists() and not overwrite):
     exit(1)
 
 tree.write(out_path, encoding='utf-8', xml_declaration=True)
-print(f'{BColors.OKGREEN}Az output fájl elkészült: {out_path}{BColors.ENDC}')
+if (color):
+    print(f'{BColors.OKGREEN}Az output fájl elkészült: {out_path}{BColors.ENDC}')
+else:
+    print(f'Az output fájl elkészült: {out_path}')
