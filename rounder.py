@@ -268,7 +268,7 @@ if not do_round:
 
 # Output
 if (out_path.exists() and not overwrite):
-    print(f'A megadott output fájl már létezik: {out_path}')
+    print(f'A megadott output fájl már létezik: {out_path}. Ha felül akarod írni, használd a --overwrite kapcsolót.')
     exit(1)
 
 tree.write(out_path, encoding='utf-8', xml_declaration=True, default_namespace=namespaces['szamlak'])
