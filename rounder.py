@@ -67,6 +67,7 @@ out_path = out_folder.joinpath(f"{input.stem}-kerekitett{input.suffix}")
 
 # XML validation
 def get_xml_tree(input: Path) -> ET.ElementTree | None:
+    ET.register_namespace('',"http://schemas.nav.gov.hu/2013/szamla")
     try:
         tree = ET.parse(input)
         return tree
@@ -271,5 +272,5 @@ if (out_path.exists() and not overwrite):
     print(f'A megadott output fájl már létezik: {out_path}. Ha felül akarod írni, használd a --overwrite kapcsolót.')
     exit(1)
 
-tree.write(out_path, encoding='utf-8', xml_declaration=True, default_namespace=namespaces['szamlak'])
+tree.write(out_path, encoding='utf-8', xml_declaration=True)
 print(f'{BColors.OKGREEN}Az output fájl elkészült: {out_path}{BColors.ENDC}')
